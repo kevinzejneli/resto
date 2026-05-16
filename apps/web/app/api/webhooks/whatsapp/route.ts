@@ -1,23 +1,32 @@
-import { NextResponse } from "next/server";
+import { backend, LOCATION_ID } from "../../../../lib/backend";
 
-/**
- * WhatsApp Cloud API webhook.
- * - GET: Meta subscription handshake (echo hub.challenge).
- * - POST: inbound messages -> OrderingService (stubbed).
- */
+export const dynamic = "force-dynamic";
+
 export function GET(request: Request) {
+  const { whatsapp } = backend();
   const url = new URL(request.url);
-  const mode = url.searchParams.get("hub.mode") ?? "";
-  const token = url.searchParams.get("hub.verify_token") ?? "";
-  const challenge = url.searchParams.get("hub.challenge") ?? "";
-
-  if (mode === "subscribe" && token === process.env.WHATSAPP_VERIFY_TOKEN) {
-    return new Response(challenge, { status: 200 });
-  }
-  return new Response("forbidden", { status: 403 });
+  const challenge = whatsapp.verifySubscription({
+    mode: url.searchParams.get("hub.mode") ?? "",
+    token: url.searchParams.get("hub.verify_token") ?? "",
+    challenge: url.searchParams.get("hub.challenge") ?? "",
+  });
+  return challenge
+    ? new Response(challenge, { status: 200 })
+    : new Response("forbidden", { status: 403 });
 }
 
-export async function POST(_request: Request) {
-  // TODO: verify X-Hub-Signature-256, parse inbound, hand to OrderingService.
-  return NextResponse.json({ received: true });
+export async function POST(request: Request) {
+  const { whatsapp, services } = backend();
+  const raw = await request.text();
+
+  if (!whatsapp.verifySignature(raw, request.headers.get("x-hub-signature-256"))) {
+    return new Response("invalid signature", { status: 401 });
+  }
+
+  const messages = whatsapp.parseInbound(JSON.parse(raw));
+  for (const message of messages) {
+    const { reply } = await services.ordering.handleInbound(LOCATION_ID, message);
+    await whatsapp.sendText(message.from, reply);
+  }
+  return Response.json({ received: true, handled: messages.length });
 }

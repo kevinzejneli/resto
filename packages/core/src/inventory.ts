@@ -1,4 +1,4 @@
-import type { ID, ISODateTime } from "./types.js";
+import type { ID, ISODateTime } from "./types";
 
 /** Inventory slice: stock tracking, depletion on sale, low-stock alerts. */
 
@@ -29,6 +29,7 @@ export interface StockMovement {
 
 export interface InventoryService {
   list(locationId: ID): Promise<InventoryItem[]>;
+  get(inventoryItemId: ID): Promise<InventoryItem | null>;
   recordMovement(input: {
     inventoryItemId: ID;
     delta: number;

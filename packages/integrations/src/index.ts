@@ -1,2 +1,2 @@
-export * from "./stripe.js";
-export * from "./whatsapp.js";
+export * from "./stripe";
+export * from "./whatsapp";

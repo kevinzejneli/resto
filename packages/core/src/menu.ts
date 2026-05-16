@@ -1,4 +1,4 @@
-import type { ID, Money } from "./types.js";
+import type { ID, Money } from "./types";
 
 /** Shared by POS and WhatsApp ordering — a single source of truth for what can be sold. */
 
@@ -27,5 +27,6 @@ export interface RecipeLine {
 export interface MenuService {
   listCategories(locationId: ID): Promise<MenuCategory[]>;
   listItems(locationId: ID): Promise<MenuItem[]>;
-  setAvailability(itemId: ID, available: boolean): Promise<void>;
+  getItem(itemId: ID): Promise<MenuItem | null>;
+  setAvailability(itemId: ID, available: boolean): Promise<MenuItem>;
 }

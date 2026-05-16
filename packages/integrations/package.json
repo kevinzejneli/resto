@@ -12,9 +12,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@resto/core": "workspace:*"
+    "@resto/core": "workspace:*",
+    "stripe": "^17.5.0"
   },
   "devDependencies": {
+    "@types/node": "^22.10.2",
     "typescript": "^5.7.2"
   }
 }

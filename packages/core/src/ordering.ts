@@ -1,5 +1,5 @@
-import type { ID, ISODateTime } from "./types.js";
-import type { Order, OrderLine } from "./pos.js";
+import type { ID, ISODateTime } from "./types";
+import type { Order, OrderLine } from "./pos";
 
 /** WhatsApp ordering slice: customer conversations turn into POS orders. */
 
@@ -33,7 +33,15 @@ export interface InboundMessage {
   receivedAt: ISODateTime;
 }
 
+/** Reply the bot should send back to the customer over WhatsApp. */
+export interface OrderingReply {
+  session: OrderingSession;
+  reply: string;
+}
+
 export interface OrderingService {
-  handleInbound(locationId: ID, message: InboundMessage): Promise<OrderingSession>;
+  handleInbound(locationId: ID, message: InboundMessage): Promise<OrderingReply>;
+  listSessions(locationId: ID): Promise<OrderingSession[]>;
+  getSession(sessionId: ID): Promise<OrderingSession | null>;
   confirmOrder(sessionId: ID): Promise<Order>;
 }

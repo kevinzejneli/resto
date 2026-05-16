@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@resto/api-client": "workspace:*",
     "@resto/core": "workspace:*",
     "expo": "~53.0.0",
     "expo-router": "~5.1.11",

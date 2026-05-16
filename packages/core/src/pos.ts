@@ -1,4 +1,4 @@
-import type { ID, ISODateTime, Money } from "./types.js";
+import type { ID, ISODateTime, Money } from "./types";
 
 /** POS / order-taking slice: tickets, tables, checkout. */
 
@@ -38,11 +38,25 @@ export interface Table {
   seats: number;
 }
 
+export type PaymentMethod = "cash" | "card";
+
 export interface PaymentResult {
   orderId: ID;
   paid: boolean;
+  method: PaymentMethod;
   /** Stripe PaymentIntent id when paid by card. */
   providerRef?: string;
+}
+
+export interface CheckoutOptions {
+  method: PaymentMethod;
+  providerRef?: string;
+}
+
+export interface AddLineInput {
+  menuItemId: ID;
+  quantity: number;
+  notes?: string;
 }
 
 export interface PosService {
@@ -51,8 +65,12 @@ export interface PosService {
     channel: OrderChannel;
     tableId?: ID;
   }): Promise<Order>;
-  addLine(orderId: ID, line: OrderLine): Promise<Order>;
+  getOrder(orderId: ID): Promise<Order | null>;
+  addLine(orderId: ID, line: AddLineInput): Promise<Order>;
+  removeLine(orderId: ID, index: number): Promise<Order>;
   sendToKitchen(orderId: ID): Promise<Order>;
-  checkout(orderId: ID): Promise<PaymentResult>;
+  checkout(orderId: ID, options: CheckoutOptions): Promise<PaymentResult>;
+  cancelOrder(orderId: ID): Promise<Order>;
+  listOrders(locationId: ID): Promise<Order[]>;
   listOpenOrders(locationId: ID): Promise<Order[]>;
 }

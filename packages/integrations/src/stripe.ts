@@ -1,9 +1,9 @@
+import Stripe from "stripe";
 import type { Money } from "@resto/core";
 
 /**
- * Stripe payment boundary. Intentionally a thin stub — swap the body for the
- * real `stripe` SDK once keys are wired. Signatures are stable so callers
- * (POS checkout) don't change.
+ * Stripe payment boundary. When no real secret key is configured it runs in
+ * "simulated" mode so POS checkout still works end-to-end in dev/demo.
  */
 
 export interface StripeConfig {
@@ -21,20 +21,86 @@ export interface PaymentIntent {
   id: string;
   clientSecret: string;
   status: "requires_payment_method" | "succeeded";
+  simulated: boolean;
+}
+
+export interface StripeWebhookEvent {
+  type: string;
+  orderId?: string;
 }
 
 export interface StripeClient {
+  readonly simulated: boolean;
   createPaymentIntent(input: CreatePaymentIntentInput): Promise<PaymentIntent>;
-  verifyWebhook(payload: string, signature: string): Promise<{ type: string }>;
+  verifyWebhook(payload: string, signature: string | null): Promise<StripeWebhookEvent>;
 }
 
-export function createStripeClient(_config: StripeConfig): StripeClient {
+function isRealKey(key: string): boolean {
+  return key.startsWith("sk_") && !key.includes("xxx");
+}
+
+export function stripeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): StripeConfig {
   return {
-    async createPaymentIntent() {
-      throw new Error("StripeClient.createPaymentIntent not implemented yet");
+    secretKey: env.STRIPE_SECRET_KEY ?? "",
+    webhookSecret: env.STRIPE_WEBHOOK_SECRET ?? "",
+  };
+}
+
+export function createStripeClient(config: StripeConfig): StripeClient {
+  const real = isRealKey(config.secretKey);
+  const stripe = real ? new Stripe(config.secretKey) : null;
+
+  return {
+    simulated: !real,
+
+    async createPaymentIntent(input) {
+      if (!stripe) {
+        return {
+          id: `pi_sim_${input.orderId}`,
+          clientSecret: `pi_sim_${input.orderId}_secret`,
+          status: "succeeded",
+          simulated: true,
+        };
+      }
+      const pi = await stripe.paymentIntents.create({
+        amount: input.amount.amountMinor,
+        currency: input.amount.currency.toLowerCase(),
+        description: input.description ?? `Order ${input.orderId}`,
+        metadata: { orderId: input.orderId },
+        automatic_payment_methods: { enabled: true },
+      });
+      return {
+        id: pi.id,
+        clientSecret: pi.client_secret ?? "",
+        status: pi.status === "succeeded" ? "succeeded" : "requires_payment_method",
+        simulated: false,
+      };
     },
-    async verifyWebhook() {
-      throw new Error("StripeClient.verifyWebhook not implemented yet");
+
+    async verifyWebhook(payload, signature) {
+      if (!stripe || !config.webhookSecret) {
+        const parsed = JSON.parse(payload) as {
+          type?: string;
+          data?: { object?: { metadata?: { orderId?: string } } };
+        };
+        return {
+          type: parsed.type ?? "unknown",
+          ...(parsed.data?.object?.metadata?.orderId
+            ? { orderId: parsed.data.object.metadata.orderId }
+            : {}),
+        };
+      }
+      if (!signature) throw new Error("Missing stripe-signature header");
+      const event = stripe.webhooks.constructEvent(
+        payload,
+        signature,
+        config.webhookSecret,
+      );
+      const obj = event.data.object as { metadata?: { orderId?: string } };
+      return {
+        type: event.type,
+        ...(obj.metadata?.orderId ? { orderId: obj.metadata.orderId } : {}),
+      };
     },
   };
 }
