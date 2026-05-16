@@ -4,12 +4,14 @@ import type { ID, Money } from "./types";
 
 export interface MenuCategory {
   id: ID;
+  locationId: ID;
   name: string;
   sortOrder: number;
 }
 
 export interface MenuItem {
   id: ID;
+  locationId: ID;
   categoryId: ID;
   name: string;
   description?: string;

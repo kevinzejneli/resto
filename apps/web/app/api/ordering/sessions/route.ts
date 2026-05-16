@@ -1,9 +1,9 @@
-import { backend, LOCATION_ID } from "../../../../lib/backend";
-import { route } from "../../../../lib/http";
+import { authed } from "../../../../lib/api-handler";
 
 export const dynamic = "force-dynamic";
 
-export function GET() {
-  const { services } = backend();
-  return route(async () => services.ordering.listSessions(LOCATION_ID));
+export function GET(request: Request) {
+  return authed(request, ({ b, locationId }) =>
+    b.services.ordering.listSessions(locationId),
+  );
 }

@@ -3,7 +3,8 @@ import { backend } from "../../../../lib/backend";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const { stripe, services } = backend();
+  const b = backend();
+  const { stripe, services } = b;
   const raw = await request.text();
 
   let event;
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
         method: "card",
         providerRef: "stripe_webhook",
       });
+      b.persist();
     }
   }
   return Response.json({ received: true });

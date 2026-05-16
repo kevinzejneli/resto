@@ -1,15 +1,24 @@
-import { backend, LOCATION_ID } from "../../../lib/backend";
-import { route } from "../../../lib/http";
+import { toPublicUser } from "@resto/core";
+import { authed } from "../../../lib/api-handler";
 
 export const dynamic = "force-dynamic";
 
-export function GET() {
-  const { services, store, stripe, whatsapp } = backend();
-  return route(async () => ({
-    location: store.location,
-    tables: store.tables,
-    categories: await services.menu.listCategories(LOCATION_ID),
-    menuItems: await services.menu.listItems(LOCATION_ID),
-    integrations: { stripeSimulated: stripe.simulated, whatsappSimulated: whatsapp.simulated },
-  }));
+export function GET(request: Request) {
+  return authed(request, async ({ b, session, locationId }) => {
+    const locations = b.store.locations.filter((l) => l.orgId === session.orgId);
+    const org = b.store.orgs.find((o) => o.id === session.orgId) ?? null;
+    return {
+      user: toPublicUser(session.user),
+      org,
+      locations,
+      currentLocation: locations.find((l) => l.id === locationId) ?? null,
+      tables: b.store.tables.filter((t) => t.locationId === locationId),
+      categories: await b.services.menu.listCategories(locationId),
+      menuItems: await b.services.menu.listItems(locationId),
+      integrations: {
+        stripeSimulated: b.stripe.simulated,
+        whatsappSimulated: b.whatsapp.simulated,
+      },
+    };
+  });
 }

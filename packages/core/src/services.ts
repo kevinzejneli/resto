@@ -1,6 +1,6 @@
 import type { Store } from "./store";
 import { newId } from "./ids";
-import { addMoney, money, scaleMoney, type ID } from "./types";
+import { addMoney, money, scaleMoney, type ID, type Location } from "./types";
 import type { MenuItem, MenuService } from "./menu";
 import type { InventoryItem, InventoryService } from "./inventory";
 import type {
@@ -67,13 +67,21 @@ function round3(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
 
+function getLocation(store: Store, locationId: ID): Location {
+  const loc = store.locations.find((l) => l.id === locationId);
+  if (!loc) throw new Error(`Location not found: ${locationId}`);
+  return loc;
+}
+
 function createMenuService(store: Store): MenuService {
   return {
-    async listCategories() {
-      return [...store.categories].sort((a, b) => a.sortOrder - b.sortOrder);
+    async listCategories(locationId: ID) {
+      return store.categories
+        .filter((c) => c.locationId === locationId)
+        .sort((a, b) => a.sortOrder - b.sortOrder);
     },
-    async listItems() {
-      return [...store.menuItems];
+    async listItems(locationId: ID) {
+      return store.menuItems.filter((m) => m.locationId === locationId);
     },
     async getItem(itemId: ID) {
       return store.menuItems.find((m) => m.id === itemId) ?? null;
@@ -125,6 +133,7 @@ function createPosService(store: Store, menu: MenuService): PosService {
 
   return {
     async openOrder({ locationId, channel, tableId }) {
+      const loc = getLocation(store, locationId);
       const order: Order = {
         id: newId("ord"),
         locationId,
@@ -132,7 +141,7 @@ function createPosService(store: Store, menu: MenuService): PosService {
         status: "open",
         tableId: tableId ?? null,
         lines: [],
-        total: money(0),
+        total: money(0, loc.currency),
         createdAt: new Date().toISOString(),
       };
       store.orders.push(order);
@@ -265,8 +274,8 @@ function createOrderingService(
     return session;
   }
 
-  async function orderableItems(): Promise<MenuItem[]> {
-    return (await menu.listItems(store.location.id)).filter((m) => m.available);
+  async function orderableItems(locationId: ID): Promise<MenuItem[]> {
+    return (await menu.listItems(locationId)).filter((m) => m.available);
   }
 
   function renderMenu(items: MenuItem[]): string {
@@ -286,7 +295,7 @@ function createOrderingService(
     async handleInbound(locationId: ID, message: InboundMessage): Promise<OrderingReply> {
       const session = sessionFor(locationId, message.from);
       const text = message.text.trim().toLowerCase();
-      const items = await orderableItems();
+      const items = await orderableItems(locationId);
       let reply: string;
 
       if (text === "yes" && session.state === "awaiting_confirmation") {
@@ -321,7 +330,7 @@ function createOrderingService(
         }
       } else {
         session.state = "browsing_menu";
-        reply = `Welcome to ${store.location.name}! Menu:\n${renderMenu(items)}\n\nReply with a number to add it.`;
+        reply = `Welcome to ${getLocation(store, locationId).name}! Menu:\n${renderMenu(items)}\n\nReply with a number to add it.`;
       }
 
       session.updatedAt = new Date().toISOString();

@@ -9,6 +9,10 @@ dist/
 .expo/
 *.tsbuildinfo
 
+# local data store (JSON persistence)
+.data/
+*.tmp
+
 # env
 .env
 .env.local

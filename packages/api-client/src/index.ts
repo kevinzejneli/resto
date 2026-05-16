@@ -7,14 +7,19 @@ import type {
   OrderChannel,
   OrderingReply,
   OrderingSession,
+  Org,
   PaymentMethod,
   PaymentResult,
+  PublicUser,
   StockMovementReason,
   Table,
 } from "@resto/core";
 
 export interface Bootstrap {
-  location: Location;
+  user: PublicUser;
+  org: Org | null;
+  locations: Location[];
+  currentLocation: Location | null;
   tables: Table[];
   categories: MenuCategory[];
   menuItems: MenuItem[];
@@ -31,12 +36,27 @@ export interface CheckoutResponse {
   clientSecret?: string;
 }
 
+export interface LoginResponse {
+  token: string;
+  user: PublicUser;
+}
+
 export interface ApiClientOptions {
   /** "" for same-origin (web); a full URL for mobile. */
   baseUrl: string;
+  token?: string;
+  locationId?: string;
 }
 
 export interface ApiClient {
+  setToken(token: string | null): void;
+  getToken(): string | null;
+  setLocationId(locationId: string | null): void;
+  getLocationId(): string | null;
+
+  login(email: string, password: string): Promise<LoginResponse>;
+  me(): Promise<{ user: PublicUser; org: Org | null }>;
+
   bootstrap(): Promise<Bootstrap>;
   listOrders(open?: boolean): Promise<Order[]>;
   getOrder(id: string): Promise<Order>;
@@ -58,40 +78,81 @@ export interface ApiClient {
   simulateInbound(input: { from: string; text: string }): Promise<OrderingReply>;
 }
 
-export function createApiClient({ baseUrl }: ApiClientOptions): ApiClient {
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+export function createApiClient(opts: ApiClientOptions): ApiClient {
+  const { baseUrl } = opts;
+  let token: string | null = opts.token ?? null;
+  let locationId: string | null = opts.locationId ?? null;
+
   async function req<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${baseUrl}${path}`, {
-      ...init,
-      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-    });
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...((init?.headers as Record<string, string>) ?? {}),
+    };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (locationId) headers["x-location-id"] = locationId;
+
+    const res = await fetch(`${baseUrl}${path}`, { ...init, headers });
     const text = await res.text();
     const data = text ? JSON.parse(text) : null;
     if (!res.ok) {
-      throw new Error((data && data.error) || `Request failed: ${res.status}`);
+      throw new ApiError(
+        (data && data.error) || `Request failed: ${res.status}`,
+        res.status,
+      );
     }
     return data as T;
   }
 
-  const post = (path: string, body?: unknown) =>
-    ({ method: "POST", ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }) as RequestInit;
+  const post = (body?: unknown): RequestInit => ({
+    method: "POST",
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
 
   return {
+    setToken: (t) => {
+      token = t;
+    },
+    getToken: () => token,
+    setLocationId: (l) => {
+      locationId = l;
+    },
+    getLocationId: () => locationId,
+
+    async login(email, password) {
+      const res = await req<LoginResponse>(
+        "/api/auth/login",
+        post({ email, password }),
+      );
+      token = res.token;
+      return res;
+    },
+    me: () => req("/api/auth/me"),
+
     bootstrap: () => req<Bootstrap>("/api/bootstrap"),
     listOrders: (open) => req<Order[]>(`/api/orders${open ? "?open=true" : ""}`),
     getOrder: (id) => req<Order>(`/api/orders/${id}`),
-    openOrder: (input) => req<Order>("/api/orders", post("/api/orders", input)),
-    addLine: (id, input) => req<Order>(`/api/orders/${id}/lines`, post("", input)),
+    openOrder: (input) => req<Order>("/api/orders", post(input)),
+    addLine: (id, input) => req<Order>(`/api/orders/${id}/lines`, post(input)),
     removeLine: (id, index) =>
       req<Order>(`/api/orders/${id}/lines?index=${index}`, { method: "DELETE" }),
-    sendToKitchen: (id) => req<Order>(`/api/orders/${id}/send`, post("")),
+    sendToKitchen: (id) => req<Order>(`/api/orders/${id}/send`, post()),
     checkout: (id, method) =>
-      req<CheckoutResponse>(`/api/orders/${id}/checkout`, post("", { method })),
-    cancelOrder: (id) => req<Order>(`/api/orders/${id}/cancel`, post("")),
+      req<CheckoutResponse>(`/api/orders/${id}/checkout`, post({ method })),
+    cancelOrder: (id) => req<Order>(`/api/orders/${id}/cancel`, post()),
     listInventory: () => req<InventoryRow[]>("/api/inventory"),
     adjustInventory: (id, input) =>
-      req<InventoryItem>(`/api/inventory/${id}/adjust`, post("", input)),
+      req<InventoryItem>(`/api/inventory/${id}/adjust`, post(input)),
     listSessions: () => req<OrderingSession[]>("/api/ordering/sessions"),
     simulateInbound: (input) =>
-      req<OrderingReply>("/api/ordering/simulate", post("", input)),
+      req<OrderingReply>("/api/ordering/simulate", post(input)),
   };
 }

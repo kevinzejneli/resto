@@ -1,4 +1,4 @@
-import { backend, LOCATION_ID } from "../../../../lib/backend";
+import { backend } from "../../../../lib/backend";
 
 export const dynamic = "force-dynamic";
 
@@ -16,17 +16,24 @@ export function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { whatsapp, services } = backend();
+  const b = backend();
   const raw = await request.text();
 
-  if (!whatsapp.verifySignature(raw, request.headers.get("x-hub-signature-256"))) {
+  if (!b.whatsapp.verifySignature(raw, request.headers.get("x-hub-signature-256"))) {
     return new Response("invalid signature", { status: 401 });
   }
 
-  const messages = whatsapp.parseInbound(JSON.parse(raw));
+  // Real deployments map the WhatsApp phone-number-id to a location; for the
+  // demo, route to a configured or first location.
+  const locationId =
+    process.env.RESTO_WHATSAPP_LOCATION_ID ?? b.store.locations[0]?.id;
+  if (!locationId) return new Response("no location", { status: 503 });
+
+  const messages = b.whatsapp.parseInbound(JSON.parse(raw));
   for (const message of messages) {
-    const { reply } = await services.ordering.handleInbound(LOCATION_ID, message);
-    await whatsapp.sendText(message.from, reply);
+    const { reply } = await b.services.ordering.handleInbound(locationId, message);
+    await b.whatsapp.sendText(message.from, reply);
   }
+  if (messages.length > 0) b.persist();
   return Response.json({ received: true, handled: messages.length });
 }

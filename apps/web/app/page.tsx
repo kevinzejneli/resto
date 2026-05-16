@@ -36,10 +36,8 @@ export default function DashboardPage() {
   const paidToday = orders.filter(
     (o) => o.status === "paid" && o.createdAt.slice(0, 10) === today,
   );
-  const revenue = paidToday.reduce(
-    (acc, o) => acc + o.total.amountMinor,
-    0,
-  );
+  const revenue = paidToday.reduce((acc, o) => acc + o.total.amountMinor, 0);
+  const currency = boot?.currentLocation?.currency ?? "EUR";
   const openCount = orders.filter(
     (o) => o.status === "open" || o.status === "sent_to_kitchen" || o.status === "ready",
   ).length;
@@ -48,7 +46,7 @@ export default function DashboardPage() {
   return (
     <>
       <h1>Dashboard</h1>
-      <p className="sub">{boot?.location.name ?? "Loading…"}</p>
+      <p className="sub">{boot?.currentLocation?.name ?? "Loading…"}</p>
 
       {boot && (boot.integrations.stripeSimulated || boot.integrations.whatsappSimulated) && (
         <div className="notice">
@@ -63,7 +61,7 @@ export default function DashboardPage() {
       <div className="grid cards">
         <div className="card">
           <div className="stat-label">Revenue today</div>
-          <div className="stat">{formatMoney(money(revenue))}</div>
+          <div className="stat">{formatMoney(money(revenue, currency))}</div>
         </div>
         <div className="card">
           <div className="stat-label">Open orders</div>

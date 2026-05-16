@@ -1,12 +1,10 @@
-import { backend, LOCATION_ID } from "../../../lib/backend";
-import { route } from "../../../lib/http";
+import { authed } from "../../../lib/api-handler";
 
 export const dynamic = "force-dynamic";
 
-export function GET() {
-  const { services } = backend();
-  return route(async () => {
-    const items = await services.inventory.list(LOCATION_ID);
+export function GET(request: Request) {
+  return authed(request, async ({ b, locationId }) => {
+    const items = await b.services.inventory.list(locationId);
     return items.map((i) => ({ ...i, low: i.quantityOnHand <= i.reorderThreshold }));
   });
 }

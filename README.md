@@ -21,6 +21,16 @@ packages/
 
 ## What works
 
+- **Auth** — token sign-in (scrypt-hashed passwords, HMAC-signed bearer
+  tokens). Every data API requires a valid session. Demo login:
+  `owner@demo.test` / `demo1234`.
+- **Multi-location** — one org owns many locations (seeded: Tirana/EUR &
+  Skopje/MKD), each with its own menu, inventory, tables and orders. A
+  location switcher scopes the whole UI; the API enforces org/location
+  ownership (cross-tenant access → 403/404).
+- **Persistence** — the working set is durably written to a JSON file
+  (atomic temp+rename) behind a `Persistence` port, so it survives restarts.
+  Swap the port for Postgres/SQLite without touching the service layer.
 - **POS** — open orders (dine-in/takeaway), add/remove lines, send to kitchen,
   pay cash or card (Stripe PaymentIntent), live ticket totals.
 - **Inventory** — stock auto-depletes from menu recipes when an order is paid
@@ -52,6 +62,9 @@ that lands back in POS.
 
 ## Notes / next steps
 
-- State is in-memory (single process); swap `packages/core/src/store.ts` for a
-  real database behind the same `Store` shape to persist.
-- No auth or multi-location yet — both are natural next layers.
+- Persistence is a single JSON file (fine for a single-server pilot). For
+  scale, implement the `Persistence` port in `packages/core/src/store.ts`
+  against Postgres/SQLite — the service layer is unchanged.
+- Auth has no signup/refresh/RBAC-per-action yet; tokens are 7-day bearer.
+- Real card capture (Stripe Elements), reporting history, and a menu/table
+  management UI are the next feature layers.
