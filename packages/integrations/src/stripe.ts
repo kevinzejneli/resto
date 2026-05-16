@@ -9,6 +9,7 @@ import type { Money } from "@resto/core";
 export interface StripeConfig {
   secretKey: string;
   webhookSecret: string;
+  publishableKey: string;
 }
 
 export interface CreatePaymentIntentInput {
@@ -29,9 +30,18 @@ export interface StripeWebhookEvent {
   orderId?: string;
 }
 
+export interface RetrievedIntent {
+  id: string;
+  status: string;
+  orderId?: string;
+}
+
 export interface StripeClient {
   readonly simulated: boolean;
+  /** Safe to expose to the browser for Stripe.js; null in simulated mode. */
+  readonly publishableKey: string | null;
   createPaymentIntent(input: CreatePaymentIntentInput): Promise<PaymentIntent>;
+  retrievePaymentIntent(id: string): Promise<RetrievedIntent>;
   verifyWebhook(payload: string, signature: string | null): Promise<StripeWebhookEvent>;
 }
 
@@ -43,6 +53,7 @@ export function stripeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Strip
   return {
     secretKey: env.STRIPE_SECRET_KEY ?? "",
     webhookSecret: env.STRIPE_WEBHOOK_SECRET ?? "",
+    publishableKey: env.STRIPE_PUBLISHABLE_KEY ?? "",
   };
 }
 
@@ -52,6 +63,7 @@ export function createStripeClient(config: StripeConfig): StripeClient {
 
   return {
     simulated: !real,
+    publishableKey: real ? config.publishableKey || null : null,
 
     async createPaymentIntent(input) {
       if (!stripe) {
@@ -74,6 +86,18 @@ export function createStripeClient(config: StripeConfig): StripeClient {
         clientSecret: pi.client_secret ?? "",
         status: pi.status === "succeeded" ? "succeeded" : "requires_payment_method",
         simulated: false,
+      };
+    },
+
+    async retrievePaymentIntent(id) {
+      if (!stripe) {
+        return { id, status: "succeeded" };
+      }
+      const pi = await stripe.paymentIntents.retrieve(id);
+      return {
+        id: pi.id,
+        status: pi.status,
+        ...(pi.metadata?.orderId ? { orderId: pi.metadata.orderId } : {}),
       };
     },
 

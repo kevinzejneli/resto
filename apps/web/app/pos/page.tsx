@@ -4,6 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { formatMoney, type Order } from "@resto/core";
 import type { Bootstrap } from "@resto/api-client";
 import { api } from "../../lib/api";
+import { CardPaymentModal } from "../../components/CardPaymentModal";
+
+interface CardFlow {
+  orderId: string;
+  clientSecret: string;
+  paymentIntentId: string;
+}
 
 export default function PosPage() {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
@@ -12,6 +19,7 @@ export default function PosPage() {
   const [tableId, setTableId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [cardFlow, setCardFlow] = useState<CardFlow | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -78,10 +86,30 @@ export default function PosPage() {
   async function checkout(method: "cash" | "card") {
     if (!active) return;
     const res = await run(() => api.checkout(active.id, method));
-    if (res?.order) {
+    if (!res) return;
+    if (
+      res.requiresAction &&
+      res.clientSecret &&
+      res.paymentIntentId &&
+      boot?.integrations.stripePublishableKey
+    ) {
+      setCardFlow({
+        orderId: active.id,
+        clientSecret: res.clientSecret,
+        paymentIntentId: res.paymentIntentId,
+      });
+      return;
+    }
+    if (res.order) {
       setActive(res.order);
       void refresh();
     }
+  }
+
+  function onCardPaid(order: Order | null | undefined) {
+    setCardFlow(null);
+    if (order) setActive(order);
+    void refresh();
   }
 
   return (
@@ -237,6 +265,17 @@ export default function PosPage() {
           )}
         </div>
       </div>
+
+      {cardFlow && boot?.integrations.stripePublishableKey && (
+        <CardPaymentModal
+          orderId={cardFlow.orderId}
+          clientSecret={cardFlow.clientSecret}
+          paymentIntentId={cardFlow.paymentIntentId}
+          publishableKey={boot.integrations.stripePublishableKey}
+          onPaid={onCardPaid}
+          onCancel={() => setCardFlow(null)}
+        />
+      )}
     </>
   );
 }

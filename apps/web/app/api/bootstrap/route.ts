@@ -18,6 +18,7 @@ export function GET(request: Request) {
       integrations: {
         stripeSimulated: b.stripe.simulated,
         whatsappSimulated: b.whatsapp.simulated,
+        stripePublishableKey: b.stripe.publishableKey,
       },
     };
   });

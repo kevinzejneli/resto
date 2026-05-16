@@ -16,7 +16,11 @@ export function POST(request: Request, ctx: { params: Promise<{ id: string }> })
         orderId: order.id,
       });
       if (intent.status !== "succeeded") {
-        return { requiresAction: true, clientSecret: intent.clientSecret };
+        return {
+          requiresAction: true,
+          clientSecret: intent.clientSecret,
+          paymentIntentId: intent.id,
+        };
       }
       const payment = await c.b.services.pos.checkout(id, {
         method,

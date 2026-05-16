@@ -32,7 +32,15 @@ packages/
   (atomic temp+rename) behind a `Persistence` port, so it survives restarts.
   Swap the port for Postgres/SQLite without touching the service layer.
 - **POS** — open orders (dine-in/takeaway), add/remove lines, send to kitchen,
-  pay cash or card (Stripe PaymentIntent), live ticket totals.
+  pay cash or card, live ticket totals.
+- **Card payments** — real Stripe flow: server creates a PaymentIntent, the
+  browser confirms it with Stripe.js (Payment Element), and the server
+  re-verifies the intent before marking the order paid. Falls back to
+  instant simulated success when no keys are set.
+- **Reports** — sales history per location (revenue, order count, average,
+  revenue-by-day, top items, by channel) over 7/30/90-day windows.
+- **Menu & table management** — owner/manager-only CRUD for categories,
+  menu items (price, availability) and tables; role-enforced server-side.
 - **Inventory** — stock auto-depletes from menu recipes when an order is paid
   or a WhatsApp order is confirmed; low-stock flags; manual adjustments.
 - **WhatsApp ordering** — a conversational bot (`hi` → item numbers → `done` →
@@ -65,6 +73,7 @@ that lands back in POS.
 - Persistence is a single JSON file (fine for a single-server pilot). For
   scale, implement the `Persistence` port in `packages/core/src/store.ts`
   against Postgres/SQLite — the service layer is unchanged.
-- Auth has no signup/refresh/RBAC-per-action yet; tokens are 7-day bearer.
-- Real card capture (Stripe Elements), reporting history, and a menu/table
-  management UI are the next feature layers.
+- Auth has no signup/refresh yet; tokens are 7-day bearer. Roles are
+  enforced on management endpoints (owner/manager).
+- Reporting reads persisted orders; richer analytics (exports, comparisons)
+  and a kitchen-display flow are natural next layers.

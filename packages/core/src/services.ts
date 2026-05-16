@@ -1,15 +1,25 @@
 import type { Store } from "./store";
 import { newId } from "./ids";
 import { addMoney, money, scaleMoney, type ID, type Location } from "./types";
-import type { MenuItem, MenuService } from "./menu";
+import type {
+  CreateCategoryInput,
+  CreateItemInput,
+  MenuCategory,
+  MenuItem,
+  MenuService,
+  UpdateItemInput,
+} from "./menu";
 import type { InventoryItem, InventoryService } from "./inventory";
 import type {
   AddLineInput,
   CheckoutOptions,
+  CreateTableInput,
   Order,
   OrderLine,
   PaymentResult,
   PosService,
+  Table,
+  TableService,
 } from "./pos";
 import type {
   InboundMessage,
@@ -17,12 +27,15 @@ import type {
   OrderingService,
   OrderingSession,
 } from "./ordering";
+import type { ReportRange, ReportService, SalesReport } from "./reports";
 
 export interface Services {
   menu: MenuService;
   inventory: InventoryService;
   pos: PosService;
   ordering: OrderingService;
+  tables: TableService;
+  reports: ReportService;
 }
 
 export function createServices(store: Store): Services {
@@ -30,7 +43,9 @@ export function createServices(store: Store): Services {
   const inventory = createInventoryService(store);
   const pos = createPosService(store, menu);
   const ordering = createOrderingService(store, menu, pos);
-  return { menu, inventory, pos, ordering };
+  const tables = createTableService(store);
+  const reports = createReportService(store);
+  return { menu, inventory, pos, ordering, tables, reports };
 }
 
 function recomputeTotal(order: Order): void {
@@ -91,6 +106,63 @@ function createMenuService(store: Store): MenuService {
       if (!item) throw new Error(`Menu item not found: ${itemId}`);
       item.available = available;
       return item;
+    },
+    async createCategory(input: CreateCategoryInput) {
+      getLocation(store, input.locationId);
+      const existing = store.categories.filter(
+        (c) => c.locationId === input.locationId,
+      );
+      const category: MenuCategory = {
+        id: newId("cat"),
+        locationId: input.locationId,
+        name: input.name,
+        sortOrder: input.sortOrder ?? existing.length + 1,
+      };
+      store.categories.push(category);
+      return category;
+    },
+    async createItem(input: CreateItemInput) {
+      const loc = getLocation(store, input.locationId);
+      const category = store.categories.find(
+        (c) => c.id === input.categoryId && c.locationId === input.locationId,
+      );
+      if (!category) throw new Error(`Category not found: ${input.categoryId}`);
+      const item: MenuItem = {
+        id: newId("mi"),
+        locationId: input.locationId,
+        categoryId: input.categoryId,
+        name: input.name,
+        ...(input.description ? { description: input.description } : {}),
+        price: money(input.priceMinor, loc.currency),
+        recipe: input.recipe ?? [],
+        available: true,
+      };
+      store.menuItems.push(item);
+      return item;
+    },
+    async updateItem(itemId: ID, patch: UpdateItemInput) {
+      const item = store.menuItems.find((m) => m.id === itemId);
+      if (!item) throw new Error(`Menu item not found: ${itemId}`);
+      if (patch.name !== undefined) item.name = patch.name;
+      if (patch.description !== undefined) item.description = patch.description;
+      if (patch.categoryId !== undefined) {
+        const cat = store.categories.find(
+          (c) => c.id === patch.categoryId && c.locationId === item.locationId,
+        );
+        if (!cat) throw new Error(`Category not found: ${patch.categoryId}`);
+        item.categoryId = patch.categoryId;
+      }
+      if (patch.priceMinor !== undefined) {
+        item.price = money(patch.priceMinor, item.price.currency);
+      }
+      if (patch.recipe !== undefined) item.recipe = patch.recipe;
+      if (patch.available !== undefined) item.available = patch.available;
+      return item;
+    },
+    async deleteItem(itemId: ID) {
+      const idx = store.menuItems.findIndex((m) => m.id === itemId);
+      if (idx === -1) throw new Error(`Menu item not found: ${itemId}`);
+      store.menuItems.splice(idx, 1);
     },
   };
 }
@@ -218,6 +290,7 @@ function createPosService(store: Store, menu: MenuService): PosService {
       }
       depleteForOrder(store, order);
       order.status = "paid";
+      order.paidAt = new Date().toISOString();
       return {
         orderId: order.id,
         paid: true,
@@ -366,6 +439,110 @@ function createOrderingService(
       session.state = "completed";
       session.updatedAt = new Date().toISOString();
       return sent;
+    },
+  };
+}
+
+function createTableService(store: Store): TableService {
+  return {
+    async list(locationId: ID) {
+      return store.tables.filter((t) => t.locationId === locationId);
+    },
+    async create(input: CreateTableInput) {
+      getLocation(store, input.locationId);
+      const table: Table = {
+        id: newId("tbl"),
+        locationId: input.locationId,
+        label: input.label,
+        seats: input.seats,
+      };
+      store.tables.push(table);
+      return table;
+    },
+    async remove(tableId: ID) {
+      const idx = store.tables.findIndex((t) => t.id === tableId);
+      if (idx === -1) throw new Error(`Table not found: ${tableId}`);
+      store.tables.splice(idx, 1);
+    },
+  };
+}
+
+function createReportService(store: Store): ReportService {
+  return {
+    async sales(locationId: ID, range?: ReportRange): Promise<SalesReport> {
+      const loc = getLocation(store, locationId);
+      const today = new Date().toISOString().slice(0, 10);
+      const toDate = range?.toDate ?? today;
+      const fromDate =
+        range?.fromDate ??
+        new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+
+      const paid = store.orders.filter((o) => {
+        if (o.locationId !== locationId || o.status !== "paid") return false;
+        const d = (o.paidAt ?? o.createdAt).slice(0, 10);
+        return d >= fromDate && d <= toDate;
+      });
+
+      const byDayMap = new Map<string, { revenueMinor: number; count: number }>();
+      const itemMap = new Map<
+        string,
+        { name: string; quantity: number; revenueMinor: number }
+      >();
+      const channelMap = new Map<
+        string,
+        { revenueMinor: number; count: number }
+      >();
+      let totalMinor = 0;
+
+      for (const o of paid) {
+        totalMinor += o.total.amountMinor;
+        const day = (o.paidAt ?? o.createdAt).slice(0, 10);
+        const db = byDayMap.get(day) ?? { revenueMinor: 0, count: 0 };
+        db.revenueMinor += o.total.amountMinor;
+        db.count += 1;
+        byDayMap.set(day, db);
+
+        const cb = channelMap.get(o.channel) ?? { revenueMinor: 0, count: 0 };
+        cb.revenueMinor += o.total.amountMinor;
+        cb.count += 1;
+        channelMap.set(o.channel, cb);
+
+        for (const line of o.lines) {
+          const it = itemMap.get(line.menuItemId) ?? {
+            name: line.name,
+            quantity: 0,
+            revenueMinor: 0,
+          };
+          it.quantity += line.quantity;
+          it.revenueMinor += line.unitPrice.amountMinor * line.quantity;
+          itemMap.set(line.menuItemId, it);
+        }
+      }
+
+      const byDay = [...byDayMap.entries()]
+        .map(([date, v]) => ({ date, ...v }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const topItems = [...itemMap.entries()]
+        .map(([menuItemId, v]) => ({ menuItemId, ...v }))
+        .sort((a, b) => b.revenueMinor - a.revenueMinor)
+        .slice(0, 10);
+      const byChannel = [...channelMap.entries()].map(([channel, v]) => ({
+        channel: channel as SalesReport["byChannel"][number]["channel"],
+        ...v,
+      }));
+
+      return {
+        currency: loc.currency,
+        totalRevenue: { amountMinor: totalMinor, currency: loc.currency },
+        orderCount: paid.length,
+        avgOrder: {
+          amountMinor: paid.length ? Math.round(totalMinor / paid.length) : 0,
+          currency: loc.currency,
+        },
+        byDay,
+        topItems,
+        byChannel,
+      };
     },
   };
 }

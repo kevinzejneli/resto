@@ -11,6 +11,8 @@ import type {
   PaymentMethod,
   PaymentResult,
   PublicUser,
+  RecipeLine,
+  SalesReport,
   StockMovementReason,
   Table,
 } from "@resto/core";
@@ -23,7 +25,20 @@ export interface Bootstrap {
   tables: Table[];
   categories: MenuCategory[];
   menuItems: MenuItem[];
-  integrations: { stripeSimulated: boolean; whatsappSimulated: boolean };
+  integrations: {
+    stripeSimulated: boolean;
+    whatsappSimulated: boolean;
+    stripePublishableKey: string | null;
+  };
+}
+
+export interface UpdateMenuItemInput {
+  name?: string;
+  description?: string;
+  priceMinor?: number;
+  categoryId?: string;
+  recipe?: RecipeLine[];
+  available?: boolean;
 }
 
 export type InventoryRow = InventoryItem & { low: boolean };
@@ -34,6 +49,7 @@ export interface CheckoutResponse {
   simulated?: boolean;
   requiresAction?: boolean;
   clientSecret?: string;
+  paymentIntentId?: string;
 }
 
 export interface LoginResponse {
@@ -68,6 +84,7 @@ export interface ApiClient {
   removeLine(id: string, index: number): Promise<Order>;
   sendToKitchen(id: string): Promise<Order>;
   checkout(id: string, method: PaymentMethod): Promise<CheckoutResponse>;
+  settleCard(id: string, paymentIntentId: string): Promise<CheckoutResponse>;
   cancelOrder(id: string): Promise<Order>;
   listInventory(): Promise<InventoryRow[]>;
   adjustInventory(
@@ -76,6 +93,25 @@ export interface ApiClient {
   ): Promise<InventoryItem>;
   listSessions(): Promise<OrderingSession[]>;
   simulateInbound(input: { from: string; text: string }): Promise<OrderingReply>;
+
+  listMenuItems(): Promise<MenuItem[]>;
+  listCategories(): Promise<MenuCategory[]>;
+  createCategory(input: { name: string; sortOrder?: number }): Promise<MenuCategory>;
+  createMenuItem(input: {
+    categoryId: string;
+    name: string;
+    description?: string;
+    priceMinor: number;
+    recipe?: RecipeLine[];
+  }): Promise<MenuItem>;
+  updateMenuItem(id: string, patch: UpdateMenuItemInput): Promise<MenuItem>;
+  deleteMenuItem(id: string): Promise<{ ok: true }>;
+
+  listTables(): Promise<Table[]>;
+  createTable(input: { label: string; seats: number }): Promise<Table>;
+  deleteTable(id: string): Promise<{ ok: true }>;
+
+  getReport(days?: number): Promise<SalesReport>;
 }
 
 export class ApiError extends Error {
@@ -147,6 +183,11 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
     sendToKitchen: (id) => req<Order>(`/api/orders/${id}/send`, post()),
     checkout: (id, method) =>
       req<CheckoutResponse>(`/api/orders/${id}/checkout`, post({ method })),
+    settleCard: (id, paymentIntentId) =>
+      req<CheckoutResponse>(
+        `/api/orders/${id}/settle`,
+        post({ paymentIntentId }),
+      ),
     cancelOrder: (id) => req<Order>(`/api/orders/${id}/cancel`, post()),
     listInventory: () => req<InventoryRow[]>("/api/inventory"),
     adjustInventory: (id, input) =>
@@ -154,5 +195,23 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
     listSessions: () => req<OrderingSession[]>("/api/ordering/sessions"),
     simulateInbound: (input) =>
       req<OrderingReply>("/api/ordering/simulate", post(input)),
+
+    listMenuItems: () => req<MenuItem[]>("/api/menu/items"),
+    listCategories: () => req<MenuCategory[]>("/api/menu/categories"),
+    createCategory: (input) =>
+      req<MenuCategory>("/api/menu/categories", post(input)),
+    createMenuItem: (input) => req<MenuItem>("/api/menu/items", post(input)),
+    updateMenuItem: (id, patch) =>
+      req<MenuItem>(`/api/menu/items/${id}`, { ...post(patch), method: "PATCH" }),
+    deleteMenuItem: (id) =>
+      req<{ ok: true }>(`/api/menu/items/${id}`, { method: "DELETE" }),
+
+    listTables: () => req<Table[]>("/api/tables"),
+    createTable: (input) => req<Table>("/api/tables", post(input)),
+    deleteTable: (id) =>
+      req<{ ok: true }>(`/api/tables/${id}`, { method: "DELETE" }),
+
+    getReport: (days) =>
+      req<SalesReport>(`/api/reports${days ? `?days=${days}` : ""}`),
   };
 }

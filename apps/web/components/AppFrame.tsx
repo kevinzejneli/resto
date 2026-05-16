@@ -11,7 +11,9 @@ const NAV = [
   { href: "/pos", label: "POS" },
   { href: "/inventory", label: "Inventory" },
   { href: "/orders", label: "WhatsApp Orders" },
-];
+  { href: "/reports", label: "Reports" },
+  { href: "/manage", label: "Manage", roles: ["owner", "manager"] },
+] as const;
 
 export function AppFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -78,7 +80,12 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
           </select>
         )}
         <nav>
-          {NAV.map((item) => (
+          {NAV.filter(
+            (item) =>
+              !("roles" in item) ||
+              (boot?.user != null &&
+                (item.roles as readonly string[]).includes(boot.user.role)),
+          ).map((item) => (
             <Link key={item.href} href={item.href} className="nav-link">
               {item.label}
             </Link>

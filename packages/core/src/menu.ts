@@ -26,9 +26,37 @@ export interface RecipeLine {
   quantity: number;
 }
 
+export interface CreateCategoryInput {
+  locationId: ID;
+  name: string;
+  sortOrder?: number;
+}
+
+export interface CreateItemInput {
+  locationId: ID;
+  categoryId: ID;
+  name: string;
+  description?: string;
+  priceMinor: number;
+  recipe?: RecipeLine[];
+}
+
+export interface UpdateItemInput {
+  name?: string;
+  description?: string;
+  priceMinor?: number;
+  categoryId?: ID;
+  recipe?: RecipeLine[];
+  available?: boolean;
+}
+
 export interface MenuService {
   listCategories(locationId: ID): Promise<MenuCategory[]>;
   listItems(locationId: ID): Promise<MenuItem[]>;
   getItem(itemId: ID): Promise<MenuItem | null>;
   setAvailability(itemId: ID, available: boolean): Promise<MenuItem>;
+  createCategory(input: CreateCategoryInput): Promise<MenuCategory>;
+  createItem(input: CreateItemInput): Promise<MenuItem>;
+  updateItem(itemId: ID, patch: UpdateItemInput): Promise<MenuItem>;
+  deleteItem(itemId: ID): Promise<void>;
 }

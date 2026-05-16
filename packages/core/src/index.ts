@@ -3,6 +3,7 @@ export * from "./menu";
 export * from "./pos";
 export * from "./inventory";
 export * from "./ordering";
+export * from "./reports";
 export * from "./ids";
 export * from "./store";
 export * from "./services";

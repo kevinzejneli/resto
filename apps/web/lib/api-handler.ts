@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { ID, Order } from "@resto/core";
+import type { ID, Order, Role } from "@resto/core";
 import { backend, type Backend } from "./backend";
 import { getSession, type Session } from "./auth";
 
@@ -35,6 +35,13 @@ export function assertOrgLocation(ctx: Ctx, locationId: ID): void {
     (l) => l.id === locationId && l.orgId === ctx.session.orgId,
   );
   if (!ok) throw new HttpError("Not found", 404);
+}
+
+/** Require the caller to hold one of the given roles. */
+export function requireRole(ctx: Ctx, ...roles: Role[]): void {
+  if (!roles.includes(ctx.session.user.role)) {
+    throw new HttpError("Insufficient permissions", 403);
+  }
 }
 
 /** Fetch an order and assert it belongs to the caller's org. */

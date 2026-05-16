@@ -29,6 +29,8 @@ export interface Order {
   lines: OrderLine[];
   total: Money;
   createdAt: ISODateTime;
+  /** Set when the order reaches `paid`. Used by reporting. */
+  paidAt?: ISODateTime;
 }
 
 export interface Table {
@@ -73,4 +75,16 @@ export interface PosService {
   cancelOrder(orderId: ID): Promise<Order>;
   listOrders(locationId: ID): Promise<Order[]>;
   listOpenOrders(locationId: ID): Promise<Order[]>;
+}
+
+export interface CreateTableInput {
+  locationId: ID;
+  label: string;
+  seats: number;
+}
+
+export interface TableService {
+  list(locationId: ID): Promise<Table[]>;
+  create(input: CreateTableInput): Promise<Table>;
+  remove(tableId: ID): Promise<void>;
 }
